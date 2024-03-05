@@ -2,10 +2,15 @@
 OUTPUT ?= .output
 OUTPUT_ABS := $(abspath $(OUTPUT))
 CLANG ?= clang
-LD ?= ld
-LLVM_STRIP ?= llvm-strip
+LLVM_STRIP ?= llvm-strip-14
 CARGO ?= cargo
 DEBUG ?=
+
+ARCH          := arm64
+CROSS_COMPILE := aarch64-unknown-linux-gnu-
+CC := $(CROSS_COMPILE)gcc
+LD := $(CROSS_COMPILE)ld
+TARGET := aarch64-unknown-linux-gnu
 
 BPFTOOL_SRC := $(abspath ../bpftool/src)
 BPFTOOL_OUTPUT ?= $(OUTPUT)/bpftool
@@ -14,9 +19,10 @@ BPFTOOL ?= $(BPFTOOL_OUTPUT)/bootstrap/bpftool
 
 LIBBPF_SRC := $(abspath ../libbpf/src)
 LIBBPF_OBJ ?= $(OUTPUT)/libbpf.a
-DEFAULT_SIDECAR := ../sidecar/target/$(if $(DEBUG),debug,release)/addr2line
+DEFAULT_SIDECAR := ../sidecar/target/$(TARGET)/$(if $(DEBUG),debug,release)/addr2line
 SIDECAR ?= $(DEFAULT_SIDECAR)
-SIDECAR_EMBED_NAME ?= $(subst .,_,$(subst /,_,$(SIDECAR)))
+SIDECAR_EMBED_NAME = $(subst .,_,$(subst -,_,$(subst /,_,$(SIDECAR))))
+
 # Use our own libbpf API headers and Linux UAPI headers distributed with
 # libbpf to avoid dependency on system-wide headers, which could be missing or
 # outdated (they will be installed into $(OUTPUT))
@@ -71,7 +77,8 @@ all: retsnoop simfail
 clean:
 	$(call msg,CLEAN)
 	$(Q)rm -rf $(OUTPUT) retsnoop simfail bpftool
-	$(Q)$(CARGO) clean --manifest-path=../sidecar/Cargo.toml
+	$(Q)$(CARGO) clean --manifest-path=../sidecar/Cargo.toml \
+		--target=$(TARGET)
 
 .PHONY: cscope
 cscope:
@@ -96,6 +103,7 @@ $(LIBBPF_OBJ): $(wildcard $(LIBBPF_SRC)/*.[ch] $(LIBBPF_SRC)/Makefile) | $(OUTPU
 	$(Q)$(MAKE) -C $(LIBBPF_SRC) BUILD_STATIC_ONLY=1		      \
 		    PREFIX=$(OUTPUT_ABS) DESTDIR=			      \
 		    OBJDIR=$(OUTPUT_ABS)/libbpf LIBDIR=$(OUTPUT_ABS)/ 	      \
+		    CROSS_COMPILE=$(CROSS_COMPILE)                            \
 		    EXTRA_CFLAGS="-g -O$(if $(DEBUG),0,2)"                    \
 		    install install_uapi_headers
 
@@ -135,9 +143,9 @@ $(OUTPUT)/retsnoop.skel.h: $(OUTPUT)/mass_attach.bpf.o
 $(OUTPUT)/retsnoop.o: $(OUTPUT)/retsnoop.skel.h $(OUTPUT)/calib_feat.skel.h
 $(OUTPUT)/mass_attacher.o: $(OUTPUT)/retsnoop.skel.h $(OUTPUT)/calib_feat.skel.h
 
-$(DEFAULT_SIDECAR)::
+$(DEFAULT_SIDECAR):
 	$(call msg,CARGO,addr2line)
-	$(Q)$(CARGO) build --manifest-path=../sidecar/Cargo.toml $(if $(DEBUG),,--release)
+	CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=$(LD) $(CARGO) build --target=$(TARGET) --manifest-path=../sidecar/Cargo.toml $(if $(DEBUG),,--release)
 
 $(OUTPUT)/addr2line.embed.o: $(SIDECAR)
 	$(call msg,LLVM_STRIP,$<)

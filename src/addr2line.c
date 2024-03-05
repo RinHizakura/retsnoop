@@ -16,6 +16,13 @@
 
 #include "addr2line.h"
  
+/*
+ * Fallback for systems without this "read, mmaping if possible" cmd.
+ */
+#ifndef ELF_C_READ_MMAP
+#define ELF_C_READ_MMAP ELF_C_READ
+#endif
+
 extern char __binary_sidecar_start[];
 extern char __binary_sidecar_end[];
 
